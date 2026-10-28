@@ -2,36 +2,57 @@ import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { defaults, saveConfig, safeText } from './config.js';
 
-export async function ask(question, { secret = false } = {}) {
-  if (!process.stdin.isTTY) throw new Error('Please run WhatBot in an interactive terminal or double-click its launcher.');
+export function createPrompter({ input = process.stdin, destination = process.stdout } = {}) {
+  if (!input.isTTY) throw new Error('Please run WhatBot in an interactive terminal or double-click its launcher.');
   let muted = false;
   const output = new Writable({ write(chunk, encoding, callback) {
-    if (!muted) process.stdout.write(chunk, encoding);
+    if (!muted) destination.write(chunk, encoding);
     callback();
   } });
-  const rl = createInterface({ input: process.stdin, output, terminal: true });
-  let cancel;
-  try {
-    process.stdout.write(question);
-    muted = secret;
-    return await Promise.race([
-      rl.question(''),
-      new Promise((resolve, reject) => {
-        cancel = () => reject(new Error('Setup cancelled.'));
-        rl.once('SIGINT', cancel);
-        rl.once('close', cancel);
-      })
-    ]);
-  } finally {
-    muted = false;
-    rl.removeListener('SIGINT', cancel);
-    rl.removeListener('close', cancel);
-    rl.close();
-    if (secret) process.stdout.write('\n');
-  }
+  Object.defineProperty(output, 'columns', { get: () => destination.columns || 80 });
+  output.isTTY = true;
+  // Keep one readline interface for the whole wizard. Recreating it after every
+  // answer repeatedly pauses stdin and changes Windows console/raw-mode state.
+  const rl = createInterface({ input, output, terminal: true });
+  let closed = false;
+  rl.once('close', () => { closed = true; });
+  return {
+    async ask(question, { secret = false } = {}) {
+      if (closed) throw new Error('Setup cancelled.');
+      let cancel;
+      try {
+        const cancelled = new Promise((resolve, reject) => {
+          cancel = () => reject(new Error('Setup cancelled.'));
+          rl.once('SIGINT', cancel);
+          rl.once('close', cancel);
+        });
+        // Give visible prompts to readline so redraws preserve the question.
+        if (secret) destination.write(question);
+        muted = secret;
+        rl.resume();
+        return await Promise.race([rl.question(secret ? '' : question), cancelled]);
+      } finally {
+        muted = false;
+        rl.removeListener('SIGINT', cancel);
+        rl.removeListener('close', cancel);
+        if (secret) destination.write('\n');
+      }
+    },
+    close() { rl.close(); }
+  };
+}
+
+async function withPrompts(callback) {
+  const prompts = createPrompter();
+  try { return await callback(prompts.ask); }
+  finally { prompts.close(); }
 }
 
 export async function setup(root, existing) {
+  return withPrompts(ask => setupWithPrompt(root, existing, ask));
+}
+
+async function setupWithPrompt(root, existing, ask) {
   console.log('\nWhatBot setup\nYour API key is saved only in data/config.json on this PC. Keep data/ private.\n');
   const current = existing || defaults;
   let provider;
@@ -69,6 +90,10 @@ export async function setup(root, existing) {
 }
 
 export async function chooseGroups(client, root, config) {
+  return withPrompts(ask => chooseGroupsWithPrompt(client, root, config, ask));
+}
+
+async function chooseGroupsWithPrompt(client, root, config, ask) {
   for (;;) {
     const groups = (await client.getChats()).filter(chat => chat.isGroup).sort((a, b) => a.name.localeCompare(b.name));
     console.log('\nChoose groups WhatBot may answer in. It ignores all others and all direct messages.');

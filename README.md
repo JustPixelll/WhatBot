@@ -42,8 +42,10 @@ WhatsApp supports multiple accounts on Android and iOS. Official references:
 2. On [this repository](https://github.com/JustPixelll/WhatBot), choose
    **Code > Download ZIP**, then **Extract All**. Put the extracted folder somewhere
    such as `C:\WhatBot`. Run from the extracted folder, not inside the ZIP.
-3. Double-click **Start-WhatBot.cmd**. On the first run it installs dependencies and
-   downloads the browser used for WhatsApp Web. This may take a few minutes.
+3. Double-click **Start-WhatBot.cmd**. On the first run it installs dependencies.
+   The browser download may happen during installation or after the setup questions;
+   both stages can take a few minutes. Once **WhatBot setup** appears, enter an answer
+   and press Enter at each prompt.
 4. Choose **1 for OpenAI** or **2 for Claude**. Press Enter for the suggested model,
    or enter a model ID available to your API account.
 5. Paste your API key into the local terminal. Nothing is shown while you paste it;
@@ -147,6 +149,8 @@ stop the app, and remove its local `data/whatsapp/` directory.
 | Symptom | Try this |
 | --- | --- |
 | Node is not found | Install Node 24+ and reopen the launcher. |
+| Setup stops after entering 1 or 2 | Press Esc once to leave any console text selection. If still stuck, close the window and update the code from GitHub; the wizard now keeps one input session open. Preserve your existing `data/` folder. |
+| npm warns about Puppeteer install-script approval | Current code approves only the pinned Puppeteer version and checks that the browser exists before connecting. To fix an older copy manually, run `npx puppeteer browsers install chrome` in the WhatBot folder, then restart. |
 | Browser download fails | Check internet/proxy/antivirus download rules, then run `npm ci`. Do not skip the browser download on your PC. |
 | QR is too large or garbled | Maximize the terminal and reduce its font size with Ctrl+mouse wheel; wait for a fresh QR. |
 | Login stuck or session expired | Stop WhatBot, unlink its device on the phone, rename `data/whatsapp/` as a local backup, then start and pair again. |

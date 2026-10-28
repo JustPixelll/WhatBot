@@ -4,6 +4,7 @@ import { loadConfig, safeError } from './config.js';
 import { setup, chooseGroups } from './setup.js';
 import { generate } from './provider.js';
 import { BotEngine } from './engine.js';
+import { ensureBrowser } from './browser.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 process.chdir(root);
@@ -35,6 +36,7 @@ async function main() {
   if (!config || mode === '--setup') config = await setup(root, config);
   if (mode === '--setup') { console.log('Next: double-click Start-WhatBot.cmd.'); return; }
 
+  await ensureBrowser();
   const [{ default: wweb }, { default: qrcode }] = await Promise.all([import('whatsapp-web.js'), import('qrcode-terminal')]);
   client = new wweb.Client({
     authStrategy: new wweb.LocalAuth({ dataPath: join(root, 'data', 'whatsapp'), clientId: 'whatbot' }),

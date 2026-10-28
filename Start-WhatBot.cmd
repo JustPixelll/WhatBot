@@ -15,7 +15,7 @@ if errorlevel 1 (
   exit /b 1
 )
 if not exist "node_modules\whatsapp-web.js\package.json" (
-  echo Installing WhatBot and its browser. The first run may take a few minutes.
+  echo Installing WhatBot. The first run may take a few minutes.
   call npm ci --no-audit --no-fund
   if errorlevel 1 (
     echo Installation failed. Check the message above and your internet connection.

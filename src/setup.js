@@ -95,6 +95,7 @@ export async function chooseGroups(client, root, config) {
 
 async function chooseGroupsWithPrompt(client, root, config, ask) {
   for (;;) {
+    console.log('\nReading your WhatsApp groups...');
     const groups = (await client.getChats()).filter(chat => chat.isGroup).sort((a, b) => a.name.localeCompare(b.name));
     console.log('\nChoose groups WhatBot may answer in. It ignores all others and all direct messages.');
     groups.forEach((group, index) => console.log(`  ${index + 1}. ${safeText(group.name)}${config.groupIds.includes(group.id._serialized) ? ' [selected]' : ''}`));

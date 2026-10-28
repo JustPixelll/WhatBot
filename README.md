@@ -156,6 +156,7 @@ stop the app, and remove its local `data/whatsapp/` directory.
 | Login stuck or session expired | Stop WhatBot, unlink its device on the phone, rename `data/whatsapp/` as a local backup, then start and pair again. |
 | Browser profile already in use | Stop the other WhatBot window. Run only one copy at a time. |
 | Test group missing | Add the bot's second number to the group, then press R in group selection. |
+| A lone `r` appears and WhatBot stops before group selection | This can be a WhatsApp Web message-ID compatibility error. Update WhatBot's source files from GitHub while preserving `data/` and `node_modules/`. The updated launcher prints **WhatsApp compatibility fix active.** Lowercase `r` is accepted when the actual group picker is open; emoji names are supported. |
 | No reply | Check that the group is selected, use your personal account and a real mention or `!ask`, then wait out the cooldown. Only new text messages are processed. |
 | HTTP 401 | Correct the API key with Configure-WhatBot.cmd. |
 | HTTP 403/404 | Use a model your API account can access. |
@@ -190,6 +191,16 @@ Puppeteer is pinned to 25.16.0 via an npm override because the WhatsApp library'
 default 24.38.0 dependency tree had reported advisories. Node 24 supports the
 CommonJS-to-ESM interop this newer browser package needs. Recheck both dependency
 compatibility and `npm audit` when updating either package.
+
+Before loading whatsapp-web.js, `src/whatsapp-compat.js` applies a version-checked,
+idempotent bridge to its installed 1.34.7 chat/message serializers. It accepts both
+`_serialized` and `$1` message IDs, avoids empty IndexedDB lookup keys, and keeps a
+broken chat preview from taking down the entire group list. It touches only the
+installed dependency source, not saved logins or chat data. This addresses the
+failure described in [upstream issue 201845](https://github.com/wwebjs/whatsapp-web.js/issues/201845)
+and [proposed fix 201850](https://github.com/wwebjs/whatsapp-web.js/pull/201850).
+It is a temporary WhatBot compatibility bridge, not a claim that the upstream
+release has been fixed. Reassess it before upgrading the pinned library.
 
 A live phone pairing and end-to-end reply must be checked on the deployment PC.
 After pairing, verify one ordinary message stays unanswered, one mention gets one

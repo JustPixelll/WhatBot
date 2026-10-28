@@ -14,7 +14,7 @@ test('OpenAI request uses Responses with storage off and no tools', () => {
   assert.equal(req.url, 'https://api.openai.com/v1/responses');
   assert.equal(req.body.store, false);
   assert.equal(req.body.tools, undefined);
-  assert.equal(req.body.input, messages);
+  assert.deepEqual(req.body.input, messages);
   assert.equal(req.headers.Authorization, 'Bearer fake-key-for-tests');
 });
 

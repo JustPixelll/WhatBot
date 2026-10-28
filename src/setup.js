@@ -83,10 +83,53 @@ async function setupWithPrompt(root, existing, ask) {
     else if (['n', 'no'].includes(answer)) backgroundMessages = 0;
     else console.log('Enter y or n.');
   }
-  const config = { ...current, provider, model, apiKey, backgroundMessages };
+  const imageApiKey = current.imageGeneration && !current.imageApiKey && current.provider === 'openai' && provider !== 'openai'
+    ? current.apiKey : current.imageApiKey;
+  const config = { ...current, provider, model, apiKey, backgroundMessages, imageApiKey };
   saveConfig(root, config);
   console.log('\nSettings saved. API usage is billed by your selected provider.');
   return config;
+}
+
+export async function setupImages(root, config) {
+  return withPrompts(ask => setupImagesWithPrompt(root, config, ask));
+}
+
+export async function setupImagesWithPrompt(root, config, ask) {
+  console.log('\nPhoto understanding already uses your selected chat provider/key.');
+  console.log('Generating pictures needs OpenAI. Claude cannot generate pictures.');
+  console.log('This enables !bild / !image for everyone in your selected groups.');
+  console.log('Images use paid API credit: one 1024x1024 low-quality image per command, at most 10 per run by default.');
+  let enabled;
+  while (enabled === undefined) {
+    const answer = (await ask(`Enable image generation? y/n [${config.imageGeneration ? 'y' : 'n'}]: `)).trim().toLowerCase();
+    if (!answer) enabled = config.imageGeneration;
+    else if (['y', 'yes'].includes(answer)) enabled = true;
+    else if (['n', 'no'].includes(answer)) enabled = false;
+    else console.log('Enter y or n.');
+  }
+  let imageApiKey = config.imageApiKey;
+  let imageModel = config.imageModel;
+  if (enabled) {
+    for (;;) {
+      const canKeep = imageApiKey || config.provider === 'openai';
+      const value = (await ask(`OpenAI image API key (hidden${canKeep ? '; Enter keeps saved/reuses OpenAI chat key' : ''}): `, { secret: true })).trim();
+      if (value.startsWith('sk-ant-')) { console.log('That is a Claude key. Use an OpenAI API key for image generation.'); continue; }
+      if (value && (value.length < 10 || /\s/.test(value))) { console.log('Paste a valid OpenAI API key.'); continue; }
+      if (!value && !canKeep) { console.log('An OpenAI key is needed. Ctrl+C cancels without changing settings.'); continue; }
+      imageApiKey = value || imageApiKey;
+      break;
+    }
+    for (;;) {
+      imageModel = (await ask(`Image model ID [${safeText(config.imageModel)}]: `)).trim() || config.imageModel;
+      if (/^[a-zA-Z0-9._:-]{1,100}$/.test(imageModel)) break;
+      console.log('Enter a model ID without spaces.');
+    }
+  }
+  const updated = { ...config, imageGeneration: enabled, imageApiKey, imageModel };
+  saveConfig(root, updated);
+  console.log(`Image generation ${enabled ? 'enabled' : 'disabled'}. Chat settings and WhatsApp login are preserved.`);
+  return updated;
 }
 
 export async function chooseGroups(client, root, config) {

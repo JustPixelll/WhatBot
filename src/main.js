@@ -1,11 +1,13 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadConfig, safeError } from './config.js';
-import { setup, chooseGroups } from './setup.js';
-import { generate } from './provider.js';
+import { setup, setupImages, chooseGroups } from './setup.js';
+import { generate, generateImage } from './provider.js';
 import { BotEngine } from './engine.js';
 import { ensureBrowser } from './browser.js';
 import { applyWhatsAppCompatibility } from './whatsapp-compat.js';
+import { loadPersonality } from './personality.js';
+import { loadMessageImage } from './media.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 process.chdir(root);
@@ -17,7 +19,7 @@ let readyTimer;
 const controller = new AbortController();
 
 function reportError(error) {
-  const detail = safeError(error, config?.apiKey);
+  const detail = safeError(error, [config?.apiKey, config?.imageApiKey]);
   console.error(`${startupStage} failed: ${detail === 'r' ? 'WhatsApp returned its internal r error while reading chat data.' : detail}`);
 }
 
@@ -35,15 +37,21 @@ async function stop(code = 0, reason = code ? 'error' : 'finished') {
 
 async function main() {
   const mode = process.argv[2];
-  if (mode && !['--setup', '--groups', '--check'].includes(mode)) throw new Error('Supported options: --setup, --groups, --check');
+  if (mode && !['--setup', '--images', '--groups', '--check'].includes(mode)) throw new Error('Supported options: --setup, --images, --groups, --check');
   config = loadConfig(root);
   if (mode === '--check') {
     if (!config) throw new Error('No configuration yet. Run Start-WhatBot.cmd.');
+    const personality = loadPersonality(root, config);
     console.log(`Configuration is valid. ${config.groupIds.length} selected group(s). No API or WhatsApp requests made.`);
+    console.log(`Personality: ${personality.custom ? 'data/system-prompt.txt' : 'config/default'}. Image generation: ${config.imageGeneration ? config.imageModel : 'off'}.`);
     return;
   }
   if (!config || mode === '--setup') config = await setup(root, config);
   if (mode === '--setup') { console.log('Next: double-click Start-WhatBot.cmd.'); return; }
+  if (mode === '--images') { await setupImages(root, config); return; }
+  const personality = loadPersonality(root, config);
+  const aiConfig = { ...config, systemPrompt: personality.systemPrompt };
+  console.log(personality.custom ? 'Custom personality loaded from data/system-prompt.txt.' : 'Using the default personality. Add data/system-prompt.txt to customize.');
 
   startupStage = 'Browser setup';
   await ensureBrowser();
@@ -93,13 +101,18 @@ async function main() {
     } catch { console.log('Native mention alias lookup unavailable. !ask remains available.'); }
     engine = new BotEngine({
       config, startedAt: Date.now(), signal: controller.signal,
-      generate: messages => generate(config, messages, { signal: controller.signal }),
+      generate: messages => generate(aiConfig, messages, { signal: controller.signal }),
+      generateImage: prompt => generateImage(aiConfig, prompt, { signal: controller.signal }),
+      loadImage: message => loadMessageImage(message.original, { signal: controller.signal }),
       send: (message, text) => message.original.reply(text, undefined, { linkPreview: false, sendSeen: false }),
-      log: value => console.log(value instanceof Error ? safeError(value, config.apiKey) : value)
+      sendImage: (message, image, caption) => message.original.reply(new wweb.MessageMedia(image.mimetype, image.data, 'whatbot.png'), undefined, { caption, sendSeen: false }),
+      log: value => console.log(value instanceof Error ? safeError(value, [config.apiKey, config.imageApiKey]) : value)
     });
     console.log(`\nWhatBot is ready in ${config.groupIds.length} selected group(s).`);
     console.log('Tag its WhatsApp contact or send !ask followed by a question.');
-    console.log('Only new text messages are handled. Direct messages and offline backlog are ignored.');
+    console.log('New text/photo questions are handled. Reply to a photo with !ask your question.');
+    console.log(`Image generation: ${config.imageGeneration ? `!bild description (${config.imageModel}, max ${config.maxImagesPerSession}/run)` : 'off; run Configure-Images.cmd to enable'}.`);
+    console.log('Direct messages and offline backlog are ignored.');
     console.log(`Background context: ${config.backgroundMessages ? `up to ${config.backgroundMessages} messages` : 'off'}. API calls this run are capped at ${config.maxRequestsPerSession}.`);
     console.log('Leave this window open while using the bot. Press Ctrl+C to stop.\n');
   })().catch(error => { reportError(error); void stop(1); }));
@@ -113,9 +126,10 @@ async function main() {
     await engine.handle({
       original: message, id: message.id?._serialized, groupId: message.from, author: message.author,
       body: message.body, type: message.type, timestamp: message.timestamp,
+      hasQuotedMsg: message.hasQuotedMsg, displayName: message.rawData?.notifyName,
       fromMe: message.fromMe, isStatus: message.isStatus, nativeMention, botIds
     });
-  })().catch(error => console.error(safeError(error, config.apiKey))));
+  })().catch(error => console.error(safeError(error, [config.apiKey, config.imageApiKey]))));
 
   console.log('\nOpening WhatsApp. The first connection can take a minute...');
   startupStage = 'WhatsApp initialization';

@@ -85,9 +85,12 @@ to keep linked devices connected.
 | Start | Double-click `Start-WhatBot.cmd` |
 | Stop | Press **Ctrl+C** in its window; confirm termination if Windows asks |
 | Change provider, model, or key | Stop the bot, then run `Configure-WhatBot.cmd` |
+| Configure image generation | Stop the bot, then run `Configure-Images.cmd` |
 | Change allowed groups | Stop the bot, then run `Choose-Groups.cmd` |
 | Check local settings without connecting | Run `npm run check` in the project folder |
 | Ask a question | Native @mention or `!ask your question` |
+| Ask about a photo | Reply to the photo with `!ask Was siehst du?`, or put `!ask` plus a question in its caption |
+| Generate a picture | `!bild description` or `!image description` (requires image setup) |
 | Show help | Native @mention followed by `help`, or `!ask help` |
 | Show status | Native @mention followed by `status`, or `!ask status` |
 | Clear this group's shared AI context | Native @mention followed by `reset`, or `!ask reset` |
@@ -97,9 +100,11 @@ startup task or background service. After stopping it, there are no bot replies 
 new AI calls. An AI request already submitted may still be billed when you stop.
 Messages sent before the bot becomes ready are ignored, not answered on the next run.
 
-## What the first version does
+## What WhatBot does
 
-- Text questions and answers, in English, German, or the language you use.
+- Text and photo questions and answers, in English, German, or the language you use.
+- Optional image generation through a separately configured OpenAI key.
+- A persistent local personality file, independent of temporary conversation memory.
 - Native WhatsApp mentions, with a `!ask` fallback.
 - Replies only in explicitly selected groups; direct messages are ignored.
 - Separate, shared AI context for each group, retaining up to 12 conversation
@@ -115,26 +120,95 @@ Everyone in an enabled group can ask questions and clear the group's AI context.
 The 100-request cap is **not a euro budget**; failed requests count, and restarting
 resets the cap. Use your provider's usage controls as appropriate.
 
-This version has no web search, image or voice understanding, company-file access,
-or computer control. Attachments and captions are ignored. A reply to an earlier
-message does not include the quoted text automatically; paste the relevant text
-into your question. It cannot summarize messages it has not received, and cannot
+This version has no web search, voice understanding, image editing, company-file
+access, or computer control. Videos, stickers and documents are not analyzed.
+A reply to an earlier text message does not include its quoted text automatically;
+paste the relevant text into your question. It cannot summarize messages it has not received, and cannot
 summarize untagged chat unless you enable background context.
+
+## Custom personality (including a long master prompt)
+
+Put a UTF-8 text file named **`system-prompt.txt`** in the existing **`data`** folder.
+Paste the master prompt into that file, save it, and restart WhatBot. The console
+prints **Custom personality loaded from data/system-prompt.txt.** The file overrides
+the older `systemPrompt` in `data/config.json`, accepts up to 50,000 characters, and
+is not limited by the 6,000-character limit for ordinary WhatsApp questions.
+Windows may hide `.txt` extensions: avoid accidentally creating `system-prompt.txt.txt`.
+`npm run check` confirms which personality is loaded without connecting to WhatsApp.
+
+The same personality applies to all selected groups. Keep named private in-jokes
+in `data/`, never in public source files. The file is read on startup and survives
+restarts; it does **not** make conversation history persistent. Asking the bot in
+WhatsApp to change its master prompt does not edit this file. No chat export is
+imported automatically. Where WhatsApp supplies a sender's display name, it is
+included as an untrusted conversation label, not an identity verification.
+
+## Photos and image generation
+
+**Understanding photos:** your existing Claude or OpenAI chat model/key handles
+vision if that model supports it. No second key is needed. Send an ordinary photo
+with `!ask Was siehst du?` in its caption, or reply directly to an existing photo
+with that question. A native mention in a photo caption also works, including a
+mention alone for a basic description. Use one image per request, up to 5 MiB,
+as JPEG, PNG, WebP or GIF (first frame only); large dimensions may be rejected by
+the model. View-once photos are not processed. Expired photos must be resent.
+Photos elsewhere in the conversation are not automatically included.
+
+**Creating pictures:** Claude's API does not generate images. Run
+**Configure-Images.cmd**, answer **y**, and enter an **OpenAI API key** in the hidden
+local prompt. Keep your Claude chat key unchanged. If chat already uses OpenAI,
+Enter can reuse that key. Press Enter for the image model (`gpt-image-2`) or choose
+a compatible GPT Image model available to your account. Setup itself makes no API
+calls. Then start WhatBot and send:
+
+- `!bild ein Pinguin am österreichischen Stammtisch`
+- `!image a cartoon robot enjoying a coffee`
+- Native @mention followed by `bild` and the description also works.
+
+Generation sends the local personality and explicit image description to OpenAI.
+It does not send photo attachments or the chat history to the image endpoint.
+Each command creates one 1024×1024 PNG at `low` quality, with a three-minute
+request timeout. The bot posts a short acknowledgement, then the actual image
+with a **KI-generiert** caption. This is text-to-image generation, not editing.
+For a new picture, send a new description instead of replying to a photo.
+
+All selected group members can use the command. There is a separate limit of
+10 image attempts per run (`maxImagesPerSession` in local config); each also
+counts toward the global 100-request cap. Failed attempts count; no automatic
+retry creates extra billable requests. API credit and image-model access are
+required. The request counts are not a currency budget. Image generation defaults
+to off, including when upgrading; you can turn it off through the same launcher.
+
+## Updating an existing installation
+
+Stop WhatBot, download the latest repository ZIP and extract it. Copy the new
+**`src`** folder and **`Configure-Images.cmd`** into your existing WhatBot folder,
+replacing source files. Preserve **`data`** and **`node_modules`**. This update
+requires no new dependencies and does not reset the WhatsApp login, chat API key,
+or selected groups. Add your private personality as `data/system-prompt.txt`.
+Start the bot for photo questions; run Configure-Images.cmd once if you also want
+to generate pictures.
 
 ## Privacy and local files
 
 Tell group members that WhatBot sends addressed questions and enabled context to
-the selected AI provider. Its context is shared within that group; do not treat a
+the selected AI provider. Addressed photo questions also send that photo. Image
+generation sends its description and the local personality to OpenAI. Its context is shared within that group; do not treat a
 group interaction as a private chat with the bot.
 
-- `data/config.json`: settings, selected group IDs, and your API key **in plaintext**.
+- `data/config.json`: settings, selected group IDs, and your API keys **in plaintext**.
   Keep the folder on a trusted Windows account. It is not encrypted by this app.
 - `data/whatsapp/`: the WhatsApp login/browser profile. It can contain cached WhatsApp
   messages and other browser data. Treat the whole directory as sensitive.
+- `data/system-prompt.txt`: optional private personality and group lore, sent with
+  AI requests. It survives stop and reset.
 - `data/web-cache/`: cached WhatsApp Web files.
 - Bot-managed AI context lives only in RAM and clears on stop or `reset`. Reset does
   not erase WhatsApp's browser cache, WhatsApp messages, or provider records.
-- The OpenAI request uses `store: false`; that is not a promise of zero provider
+- Images are held temporarily in RAM, not deliberately saved by WhatBot or kept
+  in model history. Their textual questions and answers remain in the bounded
+  conversation context. WhatsApp/browser/provider copies may still exist.
+- The OpenAI **text/vision** request uses `store: false`; that is not a promise of zero provider
   retention. Your provider's data policies and account settings still apply.
 - The bot does not deliberately log question/answer bodies or API keys. Group names
   appear during selection; the login QR appears during pairing.
@@ -157,7 +231,11 @@ stop the app, and remove its local `data/whatsapp/` directory.
 | Browser profile already in use | Stop the other WhatBot window. Run only one copy at a time. |
 | Test group missing | Add the bot's second number to the group, then press R in group selection. |
 | A lone `r` appears and WhatBot stops before group selection | This can be a WhatsApp Web message-ID compatibility error. Update WhatBot's source files from GitHub while preserving `data/` and `node_modules/`. The updated launcher prints **WhatsApp compatibility fix active.** Lowercase `r` is accepted when the actual group picker is open; emoji names are supported. |
-| No reply | Check that the group is selected, use your personal account and a real mention or `!ask`, then wait out the cooldown. Only new text messages are processed. |
+| No reply | Check that the group is selected, use your personal account and a real mention or `!ask`, then wait out the cooldown. Only new addressed text/photo messages are processed. |
+| Custom personality is missing | Place `system-prompt.txt` inside the existing `data` folder and restart. Check the filename is not `.txt.txt`. |
+| Photo is unavailable | Reply directly to it; resend expired media as an ordinary photo with `!ask` in the caption. |
+| Picture generation is off | Run Configure-Images.cmd, enable it, and enter an OpenAI key. A Claude key cannot generate pictures. |
+| Image HTTP 403/404 | Check image-model access and image permissions for the OpenAI key configured in Configure-Images.cmd. |
 | HTTP 401 | Correct the API key with Configure-WhatBot.cmd. |
 | HTTP 403/404 | Use a model your API account can access. |
 | HTTP 429 | Check provider credit, quota, and rate limits. |
@@ -184,7 +262,9 @@ npm test
 
 Tests use fake messages and mocked AI responses; no credentials or WhatsApp sending
 are required. They cover routing, mention detection, privacy defaults, group context
-isolation, old/duplicate messages, rate and usage limits, aborts, and provider payloads.
+isolation, old/duplicate messages, rate and usage limits, aborts, provider payloads,
+private prompt loading, image-key separation, media validation, lazy downloads,
+photo-memory isolation, image command delivery and cross-group budget races.
 GitHub Actions runs the suite on Windows and Linux.
 
 Puppeteer is pinned to 25.16.0 via an npm override because the WhatsApp library's
@@ -210,4 +290,6 @@ old questions. Then select the real group using Choose-Groups.cmd.
 Implementation references: [whatsapp-web.js](https://wwebjs.dev/guide/),
 [local authentication](https://wwebjs.dev/guide/creating-your-bot/authentication.html),
 [OpenAI text generation](https://developers.openai.com/api/docs/guides/text),
-[Claude Messages API](https://platform.claude.com/docs/en/api/messages/create).
+[Claude Messages API](https://platform.claude.com/docs/en/api/messages/create),
+[Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision),
+[OpenAI image generation](https://developers.openai.com/api/reference/resources/images/methods/generate).
